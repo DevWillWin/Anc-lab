@@ -40,9 +40,12 @@ fun MainAncScreen(
     var isAncOn by remember { mutableStateOf(inversionEngine.isAncActive) }
     var antiGain by remember { mutableStateOf(inversionEngine.antiGain) }
     var phaseTrimMs by remember { mutableStateOf(inversionEngine.phaseTrimMs) }
-    var isLowPassEnabled by remember { mutableStateOf(inversionEngine.isLowPassEnabled) }
+    var cutoffFreqHz by remember { mutableStateOf(inversionEngine.cutoffFreqHz) }
+    var isVoiceDuckingEnabled by remember { mutableStateOf(inversionEngine.isVoiceDuckingEnabled) }
+    var isComfortBedEnabled by remember { mutableStateOf(inversionEngine.isComfortMaskingBedEnabled) }
+    var isSpeakingDetected by remember { mutableStateOf(false) }
     var liveMicDb by remember { mutableStateOf(inversionEngine.liveMicDb) }
-    var showWhyEchoBanner by remember { mutableStateOf(false) }
+    var showTipsBanner by remember { mutableStateOf(false) }
 
     val deviceInfo = remember { audioHardwareManager.getConnectedDeviceInfo() }
 
@@ -68,11 +71,12 @@ fun MainAncScreen(
         label = "pulse_glow"
     )
 
-    // Continuously poll live audio energy while running
+    // Continuously poll live audio energy and speaking detection
     LaunchedEffect(isAncOn) {
         while (isAncOn) {
             liveMicDb = inversionEngine.liveMicDb
-            delay(100)
+            isSpeakingDetected = inversionEngine.isSpeakingDetected
+            delay(80)
         }
     }
 
@@ -82,7 +86,7 @@ fun MainAncScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         // Header
         Row(
@@ -124,45 +128,37 @@ fun MainAncScreen(
             }
 
             IconButton(
-                onClick = { showWhyEchoBanner = !showWhyEchoBanner },
-                modifier = Modifier.testTag("why_echo_button")
+                onClick = { showTipsBanner = !showTipsBanner },
+                modifier = Modifier.testTag("tips_button")
             ) {
                 Icon(
-                    imageVector = if (showWhyEchoBanner) Icons.Default.Close else Icons.Default.HelpOutline,
-                    contentDescription = "Why was it amplified?",
+                    imageVector = if (showTipsBanner) Icons.Default.Close else Icons.Default.HelpOutline,
+                    contentDescription = "Why could you hear yourself?",
                     tint = TextSecondary
                 )
             }
         }
 
-        // Explanation popdown for the user's exact issue
-        AnimatedVisibility(visible = showWhyEchoBanner) {
+        // Explanation popdown for the user's feedback
+        AnimatedVisibility(visible = showTipsBanner) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = SurfaceDark),
                 shape = RoundedCornerShape(16.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, AmberWarning.copy(alpha = 0.5f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.5f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(Icons.Default.Info, contentDescription = null, tint = AmberWarning, modifier = Modifier.size(18.dp))
-                        Text(
-                            text = "Why did raw inversion sound amplified?",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = AmberWarning
-                        )
-                    }
                     Text(
-                        text = "In physics, when an inverted sound wave is delayed by even 10-15 milliseconds (the time Android takes to process mic-to-speaker), the waves no longer collide out-of-phase.\n\n" +
-                               "Instead, the delayed peaks align constructively with incoming peaks, creating an ECHO or +6 dB NOISE AMPLIFICATION.\n\n" +
-                               "How we fixed it:\n" +
-                               "1. Added Low-Pass Filter: Cuts out voices & mid-high sounds so you don't hear your own delayed voice.\n" +
-                               "2. Added Phase Alignment Trim: Lets you dial the delay to match the physical distance to your ear.\n" +
-                               "3. Fast Hardware Buffers: Minimized system latency to the absolute floor.",
+                        text = "Why you heard your own voice & How it's solved:",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = ElectricCyan
+                    )
+                    Text(
+                        text = "• The Problem: The microphone on your wire/phone picks up your voice ~10 ms before it plays in your ears. Because voice frequencies change constantly, that 10 ms lag sounds like an echo or amplifier.\n\n" +
+                               "• Solution 1 (Auto Voice Ducking): The app now detects when you speak and automatically mutes the inverted feedback instantly!\n\n" +
+                               "• Solution 2 (Sub-Bass Cutoff): Lowering the cutoff slider to 100-120 Hz completely eliminates vocal harmonics, only cancelling deep drone.\n\n" +
+                               "• Solution 3 (Comfort Bed): A subtle soft noise floor prevents high-frequency leaks through your ear tips.",
                         fontSize = 12.sp,
                         lineHeight = 17.sp,
                         color = TextSecondary
@@ -171,20 +167,19 @@ fun MainAncScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         // THE BIG ANC BUTTON
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(240.dp)
-                .padding(8.dp)
+                .size(230.dp)
+                .padding(6.dp)
         ) {
-            // Glowing aura when active
             if (isAncOn) {
                 Box(
                     modifier = Modifier
-                        .size(230.dp)
+                        .size(220.dp)
                         .scale(pulseScale)
                         .clip(CircleShape)
                         .background(
@@ -220,7 +215,9 @@ fun MainAncScreen(
                         } else {
                             inversionEngine.antiGain = antiGain
                             inversionEngine.phaseTrimMs = phaseTrimMs
-                            inversionEngine.isLowPassEnabled = isLowPassEnabled
+                            inversionEngine.cutoffFreqHz = cutoffFreqHz
+                            inversionEngine.isVoiceDuckingEnabled = isVoiceDuckingEnabled
+                            inversionEngine.isComfortMaskingBedEnabled = isComfortBedEnabled
                             inversionEngine.start()
                             isAncOn = true
                         }
@@ -243,27 +240,29 @@ fun MainAncScreen(
                         imageVector = Icons.Default.PowerSettingsNew,
                         contentDescription = if (isAncOn) "Turn Inversion ANC Off" else "Turn Inversion ANC On",
                         tint = iconColor,
-                        modifier = Modifier.size(54.dp)
+                        modifier = Modifier.size(52.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = if (isAncOn) "INVERTING" else "ANC OFF",
+                        text = if (isAncOn) "CANCELLING" else "ANC OFF",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.sp,
                         color = iconColor
                     )
                     Text(
-                        text = if (isAncOn) "Anti-Noise Active" else "Tap to Invert Mic",
+                        text = if (isAncOn) {
+                            if (isSpeakingDetected && isVoiceDuckingEnabled) "Voice Muted" else "Anti-Noise Active"
+                        } else "Tap to activate",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
-                        color = if (isAncOn) MidnightBg.copy(alpha = 0.8f) else TextTertiary
+                        color = if (isAncOn) MidnightBg.copy(alpha = 0.85f) else TextTertiary
                     )
                 }
             }
         }
 
-        // Live Mic Meter & Status Card
+        // Live Mic Meter & Voice Detection Status Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -283,12 +282,12 @@ fun MainAncScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("PHASE INVERSION", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                    Text("VOICE SENSING", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
                     Text(
-                        text = if (isAncOn) "180° Inverted (-1x)" else "Bypassed",
-                        fontSize = 14.sp,
+                        text = if (!isAncOn) "Standby" else if (isSpeakingDetected) "Speaking (Muted)" else "Silent (Inverting)",
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isAncOn) EmeraldSuccess else TextTertiary
+                        color = if (!isAncOn) TextTertiary else if (isSpeakingDetected) AmberWarning else EmeraldSuccess
                     )
                 }
 
@@ -307,6 +306,103 @@ fun MainAncScreen(
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
                     )
+                }
+            }
+        }
+
+        // Voice Activity Ducking Switch (Prevents hearing yourself talk!)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+            shape = RoundedCornerShape(16.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceVariantDark)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(Icons.Default.MicOff, contentDescription = null, tint = EmeraldSuccess, modifier = Modifier.size(18.dp))
+                        Text(
+                            text = "Auto Voice Mute (Zero Echo)",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                    }
+                    Text(
+                        text = "Instantly silences inverted output whenever you speak so you never hear your voice amplified.",
+                        fontSize = 11.sp,
+                        color = TextSecondary
+                    )
+                }
+
+                Switch(
+                    checked = isVoiceDuckingEnabled,
+                    onCheckedChange = {
+                        isVoiceDuckingEnabled = it
+                        inversionEngine.isVoiceDuckingEnabled = it
+                    },
+                    modifier = Modifier.testTag("voice_ducking_switch")
+                )
+            }
+        }
+
+        // Tunable Cutoff Frequency Slider (Isolates Low Hum from Human Voice)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+            shape = RoundedCornerShape(16.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceVariantDark)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(Icons.Default.FilterAlt, contentDescription = null, tint = ElectricCyan, modifier = Modifier.size(18.dp))
+                        Text(
+                            text = "Low-Pass Drone Cutoff",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+                    }
+                    Text(
+                        text = "${cutoffFreqHz.toInt()} Hz",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ElectricCyan
+                    )
+                }
+
+                Slider(
+                    value = cutoffFreqHz,
+                    onValueChange = {
+                        cutoffFreqHz = it
+                        inversionEngine.cutoffFreqHz = it
+                    },
+                    valueRange = 60f..250f,
+                    steps = 19,
+                    modifier = Modifier.testTag("cutoff_slider")
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("60 Hz (Sub-Bass)", fontSize = 10.sp, color = TextTertiary)
+                    Text("120 Hz (Motor/AC - Best)", fontSize = 10.sp, color = EmeraldSuccess, fontWeight = FontWeight.Bold)
+                    Text("250 Hz (Low Mid)", fontSize = 10.sp, color = TextTertiary)
                 }
             }
         }
@@ -330,7 +426,7 @@ fun MainAncScreen(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(Icons.Default.VolumeDown, contentDescription = null, tint = ElectricCyan, modifier = Modifier.size(18.dp))
                         Text(
-                            text = "Anti-Wave Gain",
+                            text = "Anti-Wave Inversion Volume",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = TextPrimary
@@ -350,19 +446,19 @@ fun MainAncScreen(
                         antiGain = it
                         inversionEngine.antiGain = it
                     },
-                    valueRange = 0.1f..1.0f,
+                    valueRange = 0.1f..0.9f,
                     modifier = Modifier.testTag("gain_slider")
                 )
 
                 Text(
-                    text = "Controls the volume of the inverted anti-signal. Keep at 40-60% to avoid overpowering ambient sound.",
+                    text = "Controls anti-wave strength. Set to 30-50% for optimal balance against ambient noise.",
                     fontSize = 11.sp,
                     color = TextTertiary
                 )
             }
         }
 
-        // Low-Pass Filter Switch (The key to eliminating the echo/amplification!)
+        // Comfort Masking Bed (Masks ear tip leakage)
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
@@ -378,25 +474,25 @@ fun MainAncScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Low-Pass Anti-Drone Filter (< 250 Hz)",
+                        text = "Acoustic Comfort Bed",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
                     )
                     Text(
-                        text = "Filters out speech, chatter, and high frequencies so you don't hear a delayed echo of your voice.",
+                        text = "Blends a soft, low Brownian noise floor to smooth over sharp external clicks and background whispers.",
                         fontSize = 11.sp,
                         color = TextSecondary
                     )
                 }
 
                 Switch(
-                    checked = isLowPassEnabled,
+                    checked = isComfortBedEnabled,
                     onCheckedChange = {
-                        isLowPassEnabled = it
-                        inversionEngine.isLowPassEnabled = it
+                        isComfortBedEnabled = it
+                        inversionEngine.isComfortMaskingBedEnabled = it
                     },
-                    modifier = Modifier.testTag("lowpass_switch")
+                    modifier = Modifier.testTag("comfort_bed_switch")
                 )
             }
         }
@@ -446,7 +542,7 @@ fun MainAncScreen(
                 )
 
                 Text(
-                    text = "Adjust slowly while listening to a fan or AC hum until you find the quietest point.",
+                    text = "Fine-tune while near an AC, fan, or fridge until you hear the low-end null.",
                     fontSize = 11.sp,
                     color = TextTertiary
                 )
