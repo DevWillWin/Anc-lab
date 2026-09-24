@@ -23,38 +23,36 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.audio.AncEngine
-import com.example.audio.AncSimulationMode
 import com.example.audio.AudioHardwareManager
+import com.example.audio.RealtimeInversionEngine
 import com.example.ui.theme.*
 import kotlinx.coroutines.delay
 import java.util.Locale
 
 @Composable
 fun MainAncScreen(
-    ancEngine: AncEngine,
+    inversionEngine: RealtimeInversionEngine,
     audioHardwareManager: AudioHardwareManager,
     modifier: Modifier = Modifier
 ) {
-    var isAncOn by remember { mutableStateOf(ancEngine.isAncActive) }
-    var selectedMode by remember { mutableStateOf(ancEngine.mode) }
-    var intensity by remember { mutableStateOf(ancEngine.intensity) }
-    var liveDb by remember { mutableStateOf(ancEngine.liveAmbientDb) }
-    var reductionDb by remember { mutableStateOf(ancEngine.estimatedReductionDb) }
-    var showExplanation by remember { mutableStateOf(false) }
+    var isAncOn by remember { mutableStateOf(inversionEngine.isAncActive) }
+    var antiGain by remember { mutableStateOf(inversionEngine.antiGain) }
+    var phaseTrimMs by remember { mutableStateOf(inversionEngine.phaseTrimMs) }
+    var isLowPassEnabled by remember { mutableStateOf(inversionEngine.isLowPassEnabled) }
+    var liveMicDb by remember { mutableStateOf(inversionEngine.liveMicDb) }
+    var showWhyEchoBanner by remember { mutableStateOf(false) }
 
     val deviceInfo = remember { audioHardwareManager.getConnectedDeviceInfo() }
 
-    // Pulsing animation for the big ANC power button when active
+    // Pulsing animation for the big ANC power button
     val infiniteTransition = rememberInfiniteTransition(label = "anc_pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1.0f,
         targetValue = if (isAncOn) 1.08f else 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
+            animation = tween(1100, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "pulse_scale"
@@ -64,17 +62,16 @@ fun MainAncScreen(
         initialValue = 0.2f,
         targetValue = if (isAncOn) 0.65f else 0.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
+            animation = tween(1100, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "pulse_glow"
     )
 
-    // Poll live mic dB & reduction info while active
+    // Continuously poll live audio energy while running
     LaunchedEffect(isAncOn) {
         while (isAncOn) {
-            liveDb = ancEngine.liveAmbientDb
-            reductionDb = ancEngine.estimatedReductionDb
+            liveMicDb = inversionEngine.liveMicDb
             delay(100)
         }
     }
@@ -87,7 +84,7 @@ fun MainAncScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // Top App Header
+        // Header
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -100,7 +97,7 @@ fun MainAncScreen(
                 Surface(
                     color = ElectricCyan.copy(alpha = 0.15f),
                     shape = CircleShape,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(42.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Headphones,
@@ -113,13 +110,13 @@ fun MainAncScreen(
                 }
                 Column {
                     Text(
-                        text = "Active Noise Cancellation",
+                        text = "Real-Time Inversion ANC",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
                     )
                     Text(
-                        text = if (deviceInfo.isWired || deviceInfo.isUsb) "Headphones Connected" else "Earphones Recommended",
+                        text = if (deviceInfo.isWired || deviceInfo.isUsb) "Wired Low-Latency Connected" else "Earphones Required",
                         fontSize = 12.sp,
                         color = if (deviceInfo.isWired || deviceInfo.isUsb) EmeraldSuccess else AmberWarning
                     )
@@ -127,38 +124,45 @@ fun MainAncScreen(
             }
 
             IconButton(
-                onClick = { showExplanation = !showExplanation },
-                modifier = Modifier.testTag("help_button")
+                onClick = { showWhyEchoBanner = !showWhyEchoBanner },
+                modifier = Modifier.testTag("why_echo_button")
             ) {
                 Icon(
-                    imageVector = if (showExplanation) Icons.Default.Close else Icons.Default.Info,
-                    contentDescription = "Info",
+                    imageVector = if (showWhyEchoBanner) Icons.Default.Close else Icons.Default.HelpOutline,
+                    contentDescription = "Why was it amplified?",
                     tint = TextSecondary
                 )
             }
         }
 
-        // Educational quick popover if user clicked (?)
-        AnimatedVisibility(visible = showExplanation) {
+        // Explanation popdown for the user's exact issue
+        AnimatedVisibility(visible = showWhyEchoBanner) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = SurfaceDark),
                 shape = RoundedCornerShape(16.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.4f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, AmberWarning.copy(alpha = 0.5f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = AmberWarning, modifier = Modifier.size(18.dp))
+                        Text(
+                            text = "Why did raw inversion sound amplified?",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = AmberWarning
+                        )
+                    }
                     Text(
-                        text = "How Phone ANC Simulation Works",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = ElectricCyan
-                    )
-                    Text(
-                        text = "Real ANC headphones react in 0.03 ms right at the ear. A phone audio loop has 12-18 ms of buffer delay.\n\n" +
-                               "To give you real noise reduction, this app combines:\n" +
-                               "1. Dynamic sound masking that quiets ambient drone.\n" +
-                               "2. Low-frequency anti-waves targeting hums.\n" +
-                               "3. Passive earphone isolation for instant comfort.",
+                        text = "In physics, when an inverted sound wave is delayed by even 10-15 milliseconds (the time Android takes to process mic-to-speaker), the waves no longer collide out-of-phase.\n\n" +
+                               "Instead, the delayed peaks align constructively with incoming peaks, creating an ECHO or +6 dB NOISE AMPLIFICATION.\n\n" +
+                               "How we fixed it:\n" +
+                               "1. Added Low-Pass Filter: Cuts out voices & mid-high sounds so you don't hear your own delayed voice.\n" +
+                               "2. Added Phase Alignment Trim: Lets you dial the delay to match the physical distance to your ear.\n" +
+                               "3. Fast Hardware Buffers: Minimized system latency to the absolute floor.",
                         fontSize = 12.sp,
                         lineHeight = 17.sp,
                         color = TextSecondary
@@ -176,7 +180,7 @@ fun MainAncScreen(
                 .size(240.dp)
                 .padding(8.dp)
         ) {
-            // Outer glowing ring when active
+            // Glowing aura when active
             if (isAncOn) {
                 Box(
                     modifier = Modifier
@@ -194,15 +198,14 @@ fun MainAncScreen(
                 )
             }
 
-            // Main Interactive Circle
             val buttonBgColor by animateColorAsState(
                 targetValue = if (isAncOn) ElectricCyan else SurfaceDark,
-                animationSpec = tween(400),
+                animationSpec = tween(350),
                 label = "btn_bg"
             )
             val iconColor by animateColorAsState(
                 targetValue = if (isAncOn) MidnightBg else TextSecondary,
-                animationSpec = tween(400),
+                animationSpec = tween(350),
                 label = "icon_color"
             )
 
@@ -212,12 +215,13 @@ fun MainAncScreen(
                     .clip(CircleShape)
                     .clickable {
                         if (isAncOn) {
-                            ancEngine.stopAnc()
+                            inversionEngine.stop()
                             isAncOn = false
                         } else {
-                            ancEngine.mode = selectedMode
-                            ancEngine.intensity = intensity
-                            ancEngine.startAnc()
+                            inversionEngine.antiGain = antiGain
+                            inversionEngine.phaseTrimMs = phaseTrimMs
+                            inversionEngine.isLowPassEnabled = isLowPassEnabled
+                            inversionEngine.start()
                             isAncOn = true
                         }
                     }
@@ -237,20 +241,20 @@ fun MainAncScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.PowerSettingsNew,
-                        contentDescription = if (isAncOn) "Turn ANC Off" else "Turn ANC On",
+                        contentDescription = if (isAncOn) "Turn Inversion ANC Off" else "Turn Inversion ANC On",
                         tint = iconColor,
                         modifier = Modifier.size(54.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = if (isAncOn) "ANC ON" else "ANC OFF",
-                        fontSize = 18.sp,
+                        text = if (isAncOn) "INVERTING" else "ANC OFF",
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.sp,
                         color = iconColor
                     )
                     Text(
-                        text = if (isAncOn) "Cancelling Noise" else "Tap to activate",
+                        text = if (isAncOn) "Anti-Noise Active" else "Tap to Invert Mic",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         color = if (isAncOn) MidnightBg.copy(alpha = 0.8f) else TextTertiary
@@ -259,7 +263,7 @@ fun MainAncScreen(
             }
         }
 
-        // Live Status Banner
+        // Live Mic Meter & Status Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -279,10 +283,10 @@ fun MainAncScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("STATUS", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                    Text("PHASE INVERSION", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
                     Text(
-                        text = if (isAncOn) "Active" else "Standby",
-                        fontSize = 15.sp,
+                        text = if (isAncOn) "180° Inverted (-1x)" else "Bypassed",
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (isAncOn) EmeraldSuccess else TextTertiary
                     )
@@ -296,27 +300,10 @@ fun MainAncScreen(
                 )
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("ESTIMATED QUIET", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                    Text("MIC INPUT LEVEL", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
                     Text(
-                        text = if (isAncOn) String.format(Locale.US, "-%.0f dB", reductionDb) else "0 dB",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isAncOn) ElectricCyan else TextTertiary
-                    )
-                }
-
-                Divider(
-                    modifier = Modifier
-                        .height(30.dp)
-                        .width(1.dp),
-                    color = SurfaceVariantDark
-                )
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("ROOM NOISE", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        text = if (isAncOn) String.format(Locale.US, "%.0f dB", liveDb) else "-- dB",
-                        fontSize = 15.sp,
+                        text = if (isAncOn) String.format(Locale.US, "%.0f dB SPL", liveMicDb) else "-- dB",
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
                     )
@@ -324,7 +311,7 @@ fun MainAncScreen(
             }
         }
 
-        // ANC Strength / Intensity Slider
+        // Anti-Noise Gain Level (Volume of the Inverted Signal)
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
@@ -341,16 +328,16 @@ fun MainAncScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Default.Tune, contentDescription = null, tint = ElectricCyan, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.VolumeDown, contentDescription = null, tint = ElectricCyan, modifier = Modifier.size(18.dp))
                         Text(
-                            text = "ANC Intensity Level",
+                            text = "Anti-Wave Gain",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = TextPrimary
                         )
                     }
                     Text(
-                        text = "${(intensity * 100).toInt()}%",
+                        text = "${(antiGain * 100).toInt()}%",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = ElectricCyan
@@ -358,27 +345,63 @@ fun MainAncScreen(
                 }
 
                 Slider(
-                    value = intensity,
+                    value = antiGain,
                     onValueChange = {
-                        intensity = it
-                        ancEngine.intensity = it
+                        antiGain = it
+                        inversionEngine.antiGain = it
                     },
-                    valueRange = 0.2f..1.0f,
-                    modifier = Modifier.testTag("intensity_slider")
+                    valueRange = 0.1f..1.0f,
+                    modifier = Modifier.testTag("gain_slider")
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Subtle", fontSize = 11.sp, color = TextTertiary)
-                    Text("Balanced", fontSize = 11.sp, color = TextTertiary)
-                    Text("Maximum Silence", fontSize = 11.sp, color = TextTertiary)
-                }
+                Text(
+                    text = "Controls the volume of the inverted anti-signal. Keep at 40-60% to avoid overpowering ambient sound.",
+                    fontSize = 11.sp,
+                    color = TextTertiary
+                )
             }
         }
 
-        // ANC Profile Selection
+        // Low-Pass Filter Switch (The key to eliminating the echo/amplification!)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+            shape = RoundedCornerShape(16.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceVariantDark)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Low-Pass Anti-Drone Filter (< 250 Hz)",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "Filters out speech, chatter, and high frequencies so you don't hear a delayed echo of your voice.",
+                        fontSize = 11.sp,
+                        color = TextSecondary
+                    )
+                }
+
+                Switch(
+                    checked = isLowPassEnabled,
+                    onCheckedChange = {
+                        isLowPassEnabled = it
+                        inversionEngine.isLowPassEnabled = it
+                    },
+                    modifier = Modifier.testTag("lowpass_switch")
+                )
+            }
+        }
+
+        // Phase Alignment / Delay Trim
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
@@ -387,101 +410,47 @@ fun MainAncScreen(
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = "ANC Mode",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(Icons.Default.GraphicEq, contentDescription = null, tint = ElectricCyan, modifier = Modifier.size(18.dp))
+                        Text(
+                            text = "Phase Alignment Delay",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+                    }
+                    Text(
+                        text = String.format(Locale.US, "%.1f ms", phaseTrimMs),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ElectricCyan
+                    )
+                }
+
+                Slider(
+                    value = phaseTrimMs,
+                    onValueChange = {
+                        phaseTrimMs = it
+                        inversionEngine.phaseTrimMs = it
+                    },
+                    valueRange = 0.0f..30.0f,
+                    steps = 30,
+                    modifier = Modifier.testTag("phase_trim_slider")
                 )
 
-                AncSimulationMode.values().forEach { m ->
-                    val isSelected = selectedMode == m
-                    Surface(
-                        color = if (isSelected) SurfaceCard else Color.Transparent,
-                        shape = RoundedCornerShape(12.dp),
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (isSelected) ElectricCyan else SurfaceVariantDark
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                selectedMode = m
-                                ancEngine.mode = m
-                                if (isAncOn) {
-                                    // Restart with new mode
-                                    ancEngine.stopAnc()
-                                    ancEngine.startAnc()
-                                }
-                            }
-                            .testTag("mode_${m.name.lowercase()}")
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = {
-                                    selectedMode = m
-                                    ancEngine.mode = m
-                                    if (isAncOn) {
-                                        ancEngine.stopAnc()
-                                        ancEngine.startAnc()
-                                    }
-                                },
-                                colors = RadioButtonDefaults.colors(
-                                    selectedColor = ElectricCyan,
-                                    unselectedColor = TextSecondary
-                                )
-                            )
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = m.title,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (isSelected) ElectricCyan else TextPrimary
-                                )
-                                Text(
-                                    text = m.subtitle,
-                                    fontSize = 11.sp,
-                                    color = TextSecondary
-                                )
-                            }
-                        }
-                    }
-                }
+                Text(
+                    text = "Adjust slowly while listening to a fan or AC hum until you find the quietest point.",
+                    fontSize = 11.sp,
+                    color = TextTertiary
+                )
             }
-        }
-
-        // Headphone Tip Recommendation Banner
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(SurfaceDark, RoundedCornerShape(12.dp))
-                .border(1.dp, SurfaceVariantDark, RoundedCornerShape(12.dp))
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.CheckCircle,
-                contentDescription = null,
-                tint = EmeraldSuccess,
-                modifier = Modifier.size(20.dp)
-            )
-            Text(
-                text = "Tip: For best results, use snug in-ear silicone or foam tips with wired headphones to seal out high frequencies.",
-                fontSize = 11.sp,
-                lineHeight = 16.sp,
-                color = TextSecondary
-            )
         }
     }
 }

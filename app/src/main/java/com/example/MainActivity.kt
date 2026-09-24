@@ -14,20 +14,21 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
-import com.example.audio.AncEngine
 import com.example.audio.AudioHardwareManager
+import com.example.audio.RealtimeInversionEngine
 import com.example.ui.screens.MainAncScreen
 import com.example.ui.theme.MidnightBg
 import com.example.ui.theme.MyApplicationTheme
 
 class MainActivity : ComponentActivity() {
     private lateinit var audioHardwareManager: AudioHardwareManager
-    private val ancEngine = AncEngine()
+    private lateinit var inversionEngine: RealtimeInversionEngine
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         audioHardwareManager = AudioHardwareManager(this)
+        inversionEngine = RealtimeInversionEngine(this)
 
         setContent {
             MyApplicationTheme {
@@ -65,7 +66,7 @@ class MainActivity : ComponentActivity() {
                             .statusBarsPadding()
                     ) {
                         MainAncScreen(
-                            ancEngine = ancEngine,
+                            inversionEngine = inversionEngine,
                             audioHardwareManager = audioHardwareManager
                         )
                     }
@@ -76,6 +77,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        ancEngine.stopAnc()
+        inversionEngine.stop()
     }
 }
