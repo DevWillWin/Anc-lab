@@ -1,0 +1,8 @@
+{
+  "name": "ANC Lab",
+  "description": "Active Noise Cancellation acoustic feasibility workbench, low-latency analyzer, interference simulator, and sound masking engine.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
